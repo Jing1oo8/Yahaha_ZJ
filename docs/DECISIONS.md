@@ -23,3 +23,19 @@ exposure/event persistence, dashboard aggregation and server-side operations.
 
 These features are useful only after the scored acceptance path is reliable.
 
+## Data split and leakage policy
+
+- Split interactions by global event time into approximately 80% train, 10%
+  validation and 10% test partitions.
+- Keep identical millisecond timestamps in one partition so strict ordering
+  holds across train, validation and test.
+- Tune on train/validation only. Refit on train plus validation once before the
+  final test evaluation.
+- Evaluate collaborative models only on users and items known at fit time, and
+  report the excluded cold-start share as coverage.
+- Source likes/views have no observation timestamp. They may be used as clearly
+  labeled online popular/cold-start priors, but never in temporal offline model
+  comparison. Offline popularity baselines use fitting interactions only.
+
+The global cutoff models a real deployment time. It is deliberately stricter
+than a random split and exposes cold-start cases for online fallback handling.
