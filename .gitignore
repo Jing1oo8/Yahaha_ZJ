@@ -1,0 +1,46 @@
+# Environment and secrets
+.env
+.env.*
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+venv/
+
+# Node
+node_modules/
+dist/
+coverage/
+*.tsbuildinfo
+
+# Local databases and runtime files
+*.db
+*.sqlite
+*.sqlite3
+logs/
+tmp/
+
+# MicroLens data must not be published
+data/raw/
+data/processed/
+data/artifacts/
+models/
+*.ckpt
+*.pt
+*.pth
+*.onnx
+
+# Editors and operating systems
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
+# Accidental environment-variable expansion artifact
+%SystemDrive%/
+
