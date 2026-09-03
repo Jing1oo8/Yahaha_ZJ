@@ -131,7 +131,9 @@ filtering through both Feed and direct item API, and restore behavior.
 2. Run final ItemCF evaluation and show the baseline table in `docs/EVALUATION.md`.
 3. Log in as Alice and Bob and compare personalized Feed results.
 4. Like/not-interested content and open Profile and Dashboard to show real changes.
-5. Log in as admin, boost an item, then offline it and verify it disappears.
+5. In Dashboard, change the time range, inspect trends, Feed shares, popular
+   content and a request trace, then export the linked events as CSV.
+6. Log in as admin, boost an item, then offline it and verify it disappears.
 
 Detailed contracts and tradeoffs are in `docs/API.md`, `docs/SYSTEM_DESIGN.md`,
 `docs/DATA.md`, `docs/EVALUATION.md`, and `docs/COMPLETION.md`.

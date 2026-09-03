@@ -29,6 +29,8 @@ This checklist mirrors the required submission items and is the release gate.
 - [x] Request ID connects recommendation requests, exposures and events
 - [x] A user action changes the profile or subsequent ranking
 - [x] Dashboard metrics are calculated from stored requests and events
+- [x] Dashboard shows active users, Feed shares and real popular content
+- [x] Time filters, trend chart, request trace and CSV export work
 - [x] Server-side boost, offline and restore operations affect feeds
 - [x] Offline content cannot be returned by bypassing the frontend
 - [x] Normal users cannot access other users' data or admin endpoints

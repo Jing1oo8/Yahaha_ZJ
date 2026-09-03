@@ -81,6 +81,32 @@ class ApiFlowTest(unittest.TestCase):
         self.assertEqual(dashboard.status_code, 200)
         self.assertGreaterEqual(dashboard.json()["exposures"], 5)
         self.assertGreaterEqual(dashboard.json()["likes"], 1)
+        self.assertGreaterEqual(dashboard.json()["active_users"], 1)
+        self.assertEqual(len(dashboard.json()["feed_shares"]), 3)
+        self.assertTrue(dashboard.json()["popular_items"])
+        self.assertTrue(dashboard.json()["trend"])
+        self.assertTrue(dashboard.json()["recent_requests"])
+
+        trace = self.admin.get(f"/api/admin/requests/{body['request_id']}")
+        self.assertEqual(trace.status_code, 200)
+        self.assertEqual(trace.json()["request_id"], body["request_id"])
+        self.assertEqual(len(trace.json()["exposures"]), 5)
+        self.assertGreaterEqual(len(trace.json()["events"]), 5)
+
+        exported = self.admin.get("/api/admin/dashboard/export", params={"range": "24h"})
+        self.assertEqual(exported.status_code, 200)
+        self.assertIn("text/csv", exported.headers["content-type"])
+        self.assertIn("attachment", exported.headers["content-disposition"])
+        self.assertIn(body["request_id"], exported.text)
+        self.assertEqual(self.user.get("/api/admin/dashboard/export").status_code, 403)
+        self.assertEqual(
+            self.user.get(f"/api/admin/requests/{body['request_id']}").status_code,
+            403,
+        )
+        self.assertEqual(
+            self.admin.get("/api/admin/dashboard", params={"range": "invalid"}).status_code,
+            422,
+        )
 
         boost = self.admin.post(
             "/api/admin/boosts",

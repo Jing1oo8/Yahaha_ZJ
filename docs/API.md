@@ -40,7 +40,9 @@ Interactive OpenAPI documentation is available at `http://127.0.0.1:8000/docs`.
 | `POST /api/events` | user | Idempotent click/like/favorite/not-interested event |
 | `GET /api/profile` | user | Recent feedback and simple online profile |
 | `GET /api/items/{id}` | user | Online item only; offline returns 404 |
-| `GET /api/admin/dashboard` | admin | Real database aggregates and current model |
+| `GET /api/admin/dashboard?range=24h` | admin | Time-filtered metrics, trends, feed shares, popular content and recent requests |
+| `GET /api/admin/dashboard/export?range=24h` | admin | UTF-8 CSV export of request-linked events |
+| `GET /api/admin/requests/{request_id}` | admin | Request, exposure and event trace |
 | `GET /api/admin/items` | admin | Search content by ID/title |
 | `PATCH /api/admin/items/{id}/status` | admin | Online/offline/restore with audit record |
 | `POST /api/admin/boosts` | admin | Targeted, timed, prioritized server-side boost |
@@ -48,6 +50,12 @@ Interactive OpenAPI documentation is available at `http://127.0.0.1:8000/docs`.
 Every feed response includes `request_id`, feed type, model version, and per-item
 source, score, position, title, and source statistics. Feed generation writes the
 request, exposures, and impression events in the same database transaction.
+
+Dashboard ranges are `1h`, `24h`, `7d`, `30d`, and `all`. Active users are the
+distinct authenticated users with a recommendation request or event in the
+selected range. Feed shares use request counts. Popular content is ranked by
+likes/favorites, clicks, then exposures from the selected range. CSV rows retain
+the request, user, model, position, source and event fields needed for analysis.
 
 ## Error and conflict behavior
 

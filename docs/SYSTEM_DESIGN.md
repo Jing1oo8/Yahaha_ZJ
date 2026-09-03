@@ -54,6 +54,12 @@ unique client event ID. Likes/favorites join the next ItemCF history immediately
 not-interested items join the exclusion set. Offline retraining can later append
 validated events to a new training snapshot without mutating old evaluation data.
 
+Dashboard queries accept one-hour, 24-hour, seven-day, 30-day, and all-time
+windows. The API aggregates active users, Feed shares, event metrics, popular
+content and hourly/daily trends from stored requests, exposures and events. A
+request trace reconnects the model version and Feed type to every exposure and
+behavior, while CSV export preserves the same identifiers for offline analysis.
+
 Duplicate events are ignored by unique event ID. Out-of-order events are safe
 because ranking uses event type and stored timestamp rather than arrival order.
 Events referencing absent metadata are rejected because exposure and item foreign
@@ -76,6 +82,7 @@ keys must already exist.
 - ItemCF has weak relevance for one-interaction users and unseen items.
 - Integer-offset pagination can shift when operations change during a session; a
   production stable cursor would encode candidate snapshot/version and last score.
-- Dashboard currently shows aggregate totals rather than a time-series comparison.
+- Dashboard compares activity over time but does not yet compare two model
+  versions side by side.
 - Source statistics have unknown observation time and are never used in offline
   temporal evaluation.

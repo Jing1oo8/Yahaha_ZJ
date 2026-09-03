@@ -11,16 +11,17 @@
   version, request ID, deduplication, seen filtering and fallback.
 - Request, exposure, impression, click, like/favorite and not-interested storage;
   idempotency and exposure ownership validation; immediate profile feedback.
-- Database-driven Dashboard, content search, timed boost, offline and restore;
-  offline state is enforced by Feed, boost and direct item APIs.
+- Database-driven Dashboard with active users, time ranges, trends, Feed shares,
+  popular content, request traces and CSV export; content search, timed boost,
+  offline and restore; offline state is enforced by Feed, boost and direct APIs.
 - React UI, OpenAPI, system/data/evaluation documentation, integration tests and
   verified production frontend build.
 
 ## Not completed or intentionally deferred
 
 - Public cloud Demo URL and 3-5 minute video are not created in the repository.
-- Dashboard time-range charts, CSV export and model-version comparison are bonus
-  features and remain deferred.
+- Dashboard model-version comparison remains deferred; time-range charts,
+  request traces and CSV export are implemented.
 - DSSM plus DeepFM/MLP, negative sampling and multimodal features are bonus work;
   the required learnable model is the explainable ItemCF baseline.
 - Docker Compose, Redis, asynchronous training, CI and structured latency metrics

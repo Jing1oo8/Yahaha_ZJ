@@ -4,6 +4,8 @@ import {
   Activity,
   BarChart3,
   Compass,
+  Download,
+  Eye,
   Flame,
   Heart,
   LogOut,
@@ -176,16 +178,58 @@ function Profile() {
   );
 }
 
+const rangeOptions = [
+  ["1h", "最近 1 小时"],
+  ["24h", "最近 24 小时"],
+  ["7d", "最近 7 天"],
+  ["30d", "最近 30 天"],
+  ["all", "全部时间"],
+];
+
+function TrendChart({ data }) {
+  const width = 800;
+  const height = 220;
+  const padding = 28;
+  const series = [
+    ["requests", "请求", "#25835c"],
+    ["exposures", "曝光", "#17211d"],
+    ["clicks", "点击", "#d29500"],
+    ["likes", "点赞", "#b83b4b"],
+  ];
+  const maxValue = Math.max(1, ...data.flatMap((point) => series.map(([key]) => point[key])));
+  const points = (key) => data.map((point, index) => {
+    const x = data.length === 1 ? width / 2 : padding + index * (width - padding * 2) / (data.length - 1);
+    const y = height - padding - point[key] * (height - padding * 2) / maxValue;
+    return `${x},${y}`;
+  }).join(" ");
+  return (
+    <div className="trend-wrap">
+      <div className="chart-legend">{series.map(([key, label, color]) => <span key={key}><i style={{ background: color }} />{label}</span>)}</div>
+      <svg className="trend-chart" viewBox={`0 0 ${width} ${height}`} role="img" aria-label="请求、曝光、点击与点赞趋势">
+        {[0, 1, 2, 3, 4].map((line) => <line key={line} x1={padding} x2={width - padding} y1={padding + line * (height - padding * 2) / 4} y2={padding + line * (height - padding * 2) / 4} />)}
+        {series.map(([key, , color]) => <polyline key={key} points={points(key)} fill="none" stroke={color} strokeWidth="3" vectorEffect="non-scaling-stroke" />)}
+      </svg>
+      <div className="chart-axis"><span>{data[0]?.bucket}</span><span>{data.at(-1)?.bucket}</span></div>
+    </div>
+  );
+}
+
 function Admin({ notify }) {
   const [dashboard, setDashboard] = useState(null);
   const [items, setItems] = useState([]);
   const [query, setQuery] = useState("");
+  const [range, setRange] = useState("24h");
+  const [trace, setTrace] = useState(null);
 
-  async function refresh() {
-    setDashboard(await api("/api/admin/dashboard"));
+  async function refresh(selectedRange = range) {
+    setDashboard(await api(`/api/admin/dashboard?range=${selectedRange}`));
     setItems(await api(`/api/admin/items?query=${encodeURIComponent(query)}&limit=30`));
   }
-  useEffect(() => { refresh(); }, []);
+  useEffect(() => { refresh(range); }, [range]);
+
+  async function inspectRequest(requestId) {
+    setTrace(await api(`/api/admin/requests/${requestId}`));
+  }
 
   async function statusChange(item) {
     const next = item.status === "online" ? "offline" : "online";
@@ -201,11 +245,18 @@ function Admin({ notify }) {
   }
 
   if (!dashboard) return <div className="empty-state">正在聚合真实事件指标...</div>;
-  const metrics = [["用户", dashboard.users], ["请求", dashboard.requests], ["曝光", dashboard.exposures], ["点击", dashboard.clicks], ["CTR", `${(dashboard.ctr * 100).toFixed(2)}%`], ["点赞", dashboard.likes], ["下线", dashboard.offline_items]];
+  const metrics = [["总用户", dashboard.users], ["活跃用户", dashboard.active_users], ["请求", dashboard.requests], ["曝光", dashboard.exposures], ["点击", dashboard.clicks], ["CTR", `${(dashboard.ctr * 100).toFixed(2)}%`], ["点赞", dashboard.likes], ["下线", dashboard.offline_items]];
   return (
     <section>
-      <div className="section-heading"><div><p className="eyebrow">OPERATIONS</p><h2>Dashboard</h2></div><span className="model-pill">{dashboard.model_version}</span></div>
+      <div className="section-heading"><div><p className="eyebrow">OPERATIONS</p><h2>Dashboard</h2></div><div className="dashboard-controls"><label>时间范围<select value={range} onChange={(event) => setRange(event.target.value)}>{rangeOptions.map(([value, label]) => <option value={value} key={value}>{label}</option>)}</select></label><a className="icon-command" href={`/api/admin/dashboard/export?range=${range}`} title="导出 CSV"><Download size={18} /></a><span className="model-pill">{dashboard.model_version}</span></div></div>
       <div className="metric-strip">{metrics.map(([label, value]) => <div key={label}><span>{label}</span><strong>{value}</strong></div>)}</div>
+      <div className="analytics-layout">
+        <div className="analytics-panel wide"><div className="panel-heading"><h3>趋势</h3><span>{rangeOptions.find(([value]) => value === range)?.[1]}</span></div><TrendChart data={dashboard.trend} /></div>
+        <div className="analytics-panel"><div className="panel-heading"><h3>信息流占比</h3><span>按请求数</span></div><div className="share-list">{dashboard.feed_shares.map((feed) => <div key={feed.feed_type}><span>{feed.feed_type}</span><div><i style={{ width: `${feed.share * 100}%` }} /></div><strong>{(feed.share * 100).toFixed(1)}%</strong></div>)}</div></div>
+        <div className="analytics-panel"><div className="panel-heading"><h3>热门内容</h3><span>真实行为</span></div><div className="compact-list">{dashboard.popular_items.slice(0, 5).map((item) => <div key={item.item_id}><strong>#{item.item_id}</strong><p>{item.title}</p><span>{item.exposures} 曝光 · {item.clicks} 点击 · {item.likes} 赞</span></div>)}</div></div>
+      </div>
+      <div className="request-section"><div className="panel-heading"><h3>最近推荐请求</h3><span>点击查看完整链路</span></div><div className="request-table"><div className="request-row header"><span>请求</span><span>用户</span><span>Feed</span><span>曝光 / 行为</span><span /></div>{dashboard.recent_requests.map((request) => <div className="request-row" key={request.request_id}><code>{request.request_id.slice(0, 8)}</code><span>{request.username}</span><span>{request.feed_type}</span><span>{request.exposures} / {request.events}</span><button title="查看请求链路" onClick={() => inspectRequest(request.request_id)}><Eye size={17} /></button></div>)}</div></div>
+      {trace && <div className="trace-panel"><div className="panel-heading"><div><p className="eyebrow">REQUEST TRACE</p><h3>{trace.request_id}</h3></div><button onClick={() => setTrace(null)}>关闭</button></div><div className="trace-meta"><span>{trace.username}</span><span>{trace.feed_type}</span><span>{trace.model_version}</span></div><div className="trace-columns"><div><h4>曝光</h4>{trace.exposures.map((entry) => <div className="trace-row" key={`${entry.position}-${entry.item_id}`}><strong>#{entry.item_id}</strong><span>位置 {entry.position}</span><span>{entry.source}</span><code>{entry.score.toFixed(5)}</code></div>)}</div><div><h4>事件</h4>{trace.events.map((event) => <div className="trace-row" key={event.event_id}><strong>#{event.item_id}</strong><span>位置 {event.position}</span><span>{event.event_type}</span><code>{event.source}</code></div>)}</div></div></div>}
       <div className="ops-heading"><h3>内容运营</h3><form onSubmit={(event) => { event.preventDefault(); refresh(); }}><Search size={17} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="按 ID 或标题搜索" /></form></div>
       <div className="ops-table"><div className="ops-row header"><span>内容</span><span>热度</span><span>状态</span><span>操作</span></div>{items.map((item) => <div className="ops-row" key={item.item_id}><div><strong>#{item.item_id}</strong><p>{item.title}</p></div><span>{item.source_views.toLocaleString()}</span><span className={`status ${item.status}`}>{item.status}</span><div className="row-actions"><button title="强推" disabled={item.status !== "online"} onClick={() => boost(item)}><Zap size={17} /></button><button onClick={() => statusChange(item)}>{item.status === "online" ? "下线" : "恢复"}</button></div></div>)}</div>
     </section>

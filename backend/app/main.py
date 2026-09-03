@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import csv
 import hashlib
+import io
 import uuid
+from collections import Counter, defaultdict
 from datetime import datetime, timedelta
 from typing import Literal
 
@@ -31,6 +34,13 @@ app = FastAPI(title="YAHAHA Recommendation MVP", version="0.1.0")
 Base.metadata.create_all(engine)
 SESSION_COOKIE = "yahaha_session"
 EVENT_TYPES = {"impression", "click", "like", "favorite", "not_interested"}
+DashboardRange = Literal["1h", "24h", "7d", "30d", "all"]
+RANGE_DELTAS = {
+    "1h": timedelta(hours=1),
+    "24h": timedelta(hours=24),
+    "7d": timedelta(days=7),
+    "30d": timedelta(days=30),
+}
 
 
 class LoginInput(BaseModel):
@@ -362,24 +372,242 @@ def get_item(item_id: int, user: User = Depends(current_user), db: Session = Dep
     return {"item_id": item.id, "title": item.title, "status": item.status}
 
 
-@app.get("/api/admin/dashboard")
-def dashboard(admin: User = Depends(admin_user), db: Session = Depends(get_db)) -> dict[str, object]:
-    del admin
-    event_counts = dict(
-        db.execute(select(Event.event_type, func.count(Event.id)).group_by(Event.event_type)).all()
-    )
-    exposures = db.scalar(select(func.count()).select_from(Exposure)) or 0
-    clicks = event_counts.get("click", 0)
+def dashboard_start(range_key: DashboardRange) -> datetime | None:
+    delta = RANGE_DELTAS.get(range_key)
+    return utcnow() - delta if delta else None
+
+
+def dashboard_snapshot(db: Session, range_key: DashboardRange) -> dict[str, object]:
+    start = dashboard_start(range_key)
+    request_query = select(RecommendationRequest)
+    exposure_query = select(Exposure)
+    event_query = select(Event)
+    if start:
+        request_query = request_query.where(RecommendationRequest.created_at >= start)
+        exposure_query = exposure_query.where(Exposure.created_at >= start)
+        event_query = event_query.where(Event.created_at >= start)
+
+    requests = list(db.scalars(request_query))
+    exposures = list(db.scalars(exposure_query))
+    events = list(db.scalars(event_query))
+    event_counts = Counter(event.event_type for event in events)
+    click_count = event_counts["click"]
+    like_count = event_counts["like"] + event_counts["favorite"]
+    active_user_ids = {request.user_id for request in requests} | {
+        event.user_id for event in events
+    }
+    feed_counts = Counter(request.feed_type for request in requests)
+    feed_shares = [
+        {
+            "feed_type": feed_type,
+            "requests": feed_counts[feed_type],
+            "share": round(feed_counts[feed_type] / len(requests), 6) if requests else 0.0,
+        }
+        for feed_type in ("personalized", "popular", "explore")
+    ]
+
+    item_stats: dict[int, Counter[str]] = defaultdict(Counter)
+    for exposure in exposures:
+        item_stats[exposure.item_id]["exposures"] += 1
+    for event in events:
+        if event.event_type in {"click", "like", "favorite"}:
+            item_stats[event.item_id][event.event_type] += 1
+    top_item_ids = sorted(
+        item_stats,
+        key=lambda item_id: (
+            -(item_stats[item_id]["like"] + item_stats[item_id]["favorite"]),
+            -item_stats[item_id]["click"],
+            -item_stats[item_id]["exposures"],
+            item_id,
+        ),
+    )[:10]
+    item_map = {
+        item.id: item
+        for item in db.scalars(select(Item).where(Item.id.in_(top_item_ids)))
+    } if top_item_ids else {}
+    popular_items = [
+        {
+            "item_id": item_id,
+            "title": item_map[item_id].title,
+            "exposures": item_stats[item_id]["exposures"],
+            "clicks": item_stats[item_id]["click"],
+            "likes": item_stats[item_id]["like"] + item_stats[item_id]["favorite"],
+        }
+        for item_id in top_item_ids
+        if item_id in item_map
+    ]
+
+    use_hour = range_key in {"1h", "24h"}
+
+    def bucket(value: datetime) -> str:
+        return value.strftime("%Y-%m-%dT%H:00") if use_hour else value.strftime("%Y-%m-%d")
+
+    trend_values: dict[str, Counter[str]] = defaultdict(Counter)
+    for request in requests:
+        trend_values[bucket(request.created_at)]["requests"] += 1
+    for exposure in exposures:
+        trend_values[bucket(exposure.created_at)]["exposures"] += 1
+    for event in events:
+        if event.event_type == "click":
+            trend_values[bucket(event.created_at)]["clicks"] += 1
+        elif event.event_type in {"like", "favorite"}:
+            trend_values[bucket(event.created_at)]["likes"] += 1
+    trend = [
+        {"bucket": name, **{metric: values[metric] for metric in ("requests", "exposures", "clicks", "likes")}}
+        for name, values in sorted(trend_values.items())
+    ]
+    if not trend:
+        trend = [{"bucket": bucket(utcnow()), "requests": 0, "exposures": 0, "clicks": 0, "likes": 0}]
+
+    recent_query = select(RecommendationRequest)
+    if start:
+        recent_query = recent_query.where(RecommendationRequest.created_at >= start)
+    recent = list(db.scalars(recent_query.order_by(RecommendationRequest.created_at.desc()).limit(12)))
+    user_ids = {request.user_id for request in recent}
+    usernames = {
+        user.id: user.username
+        for user in db.scalars(select(User).where(User.id.in_(user_ids)))
+    } if user_ids else {}
+    recent_requests = []
+    for request in recent:
+        recent_requests.append(
+            {
+                "request_id": request.request_id,
+                "user_id": request.user_id,
+                "username": usernames.get(request.user_id, "unknown"),
+                "feed_type": request.feed_type,
+                "model_version": request.model_version,
+                "created_at": request.created_at,
+                "exposures": sum(exposure.request_id == request.request_id for exposure in exposures),
+                "events": sum(
+                    event.request_id == request.request_id and event.event_type != "impression"
+                    for event in events
+                ),
+            }
+        )
+
     return {
+        "range": range_key,
+        "range_start": start,
         "users": db.scalar(select(func.count()).select_from(User)) or 0,
-        "requests": db.scalar(select(func.count()).select_from(RecommendationRequest)) or 0,
-        "exposures": exposures,
-        "clicks": clicks,
-        "ctr": round(clicks / exposures, 6) if exposures else 0.0,
-        "likes": event_counts.get("like", 0) + event_counts.get("favorite", 0),
+        "active_users": len(active_user_ids),
+        "requests": len(requests),
+        "exposures": len(exposures),
+        "clicks": click_count,
+        "ctr": round(click_count / len(exposures), 6) if exposures else 0.0,
+        "likes": like_count,
         "offline_items": db.scalar(select(func.count()).select_from(Item).where(Item.status == "offline")) or 0,
         "model_version": runtime.version,
-        "events": event_counts,
+        "events": dict(event_counts),
+        "feed_shares": feed_shares,
+        "popular_items": popular_items,
+        "trend": trend,
+        "recent_requests": recent_requests,
+    }
+
+
+@app.get("/api/admin/dashboard")
+def dashboard(
+    range_key: DashboardRange = Query(default="24h", alias="range"),
+    admin: User = Depends(admin_user),
+    db: Session = Depends(get_db),
+) -> dict[str, object]:
+    del admin
+    return dashboard_snapshot(db, range_key)
+
+
+@app.get("/api/admin/dashboard/export")
+def export_dashboard(
+    range_key: DashboardRange = Query(default="24h", alias="range"),
+    admin: User = Depends(admin_user),
+    db: Session = Depends(get_db),
+) -> Response:
+    del admin
+    start = dashboard_start(range_key)
+    statement = select(Event).order_by(Event.created_at, Event.id)
+    if start:
+        statement = statement.where(Event.created_at >= start)
+    events = list(db.scalars(statement))
+    request_ids = {event.request_id for event in events}
+    requests = {
+        request.request_id: request
+        for request in db.scalars(
+            select(RecommendationRequest).where(RecommendationRequest.request_id.in_(request_ids))
+        )
+    } if request_ids else {}
+    output = io.StringIO(newline="")
+    writer = csv.writer(output, lineterminator="\n")
+    writer.writerow(
+        ["timestamp", "request_id", "user_id", "feed_type", "model_version", "item_id", "position", "source", "event_type"]
+    )
+    for event in events:
+        request = requests.get(event.request_id)
+        writer.writerow(
+            [
+                event.created_at.isoformat(),
+                event.request_id,
+                event.user_id,
+                request.feed_type if request else "",
+                request.model_version if request else "",
+                event.item_id,
+                event.position,
+                event.source,
+                event.event_type,
+            ]
+        )
+    filename = f"yahaha-dashboard-{range_key}.csv"
+    return Response(
+        content="\ufeff" + output.getvalue(),
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@app.get("/api/admin/requests/{request_id}")
+def request_trace(
+    request_id: str,
+    admin: User = Depends(admin_user),
+    db: Session = Depends(get_db),
+) -> dict[str, object]:
+    del admin
+    request = db.get(RecommendationRequest, request_id)
+    if not request:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Recommendation request not found")
+    user = db.get(User, request.user_id)
+    exposures = list(
+        db.scalars(select(Exposure).where(Exposure.request_id == request_id).order_by(Exposure.position))
+    )
+    events = list(
+        db.scalars(select(Event).where(Event.request_id == request_id).order_by(Event.created_at, Event.id))
+    )
+    return {
+        "request_id": request.request_id,
+        "user_id": request.user_id,
+        "username": user.username if user else "unknown",
+        "feed_type": request.feed_type,
+        "model_version": request.model_version,
+        "created_at": request.created_at,
+        "exposures": [
+            {
+                "item_id": exposure.item_id,
+                "position": exposure.position,
+                "source": exposure.source,
+                "score": exposure.score,
+                "created_at": exposure.created_at,
+            }
+            for exposure in exposures
+        ],
+        "events": [
+            {
+                "event_id": event.event_id,
+                "item_id": event.item_id,
+                "position": event.position,
+                "event_type": event.event_type,
+                "source": event.source,
+                "created_at": event.created_at,
+            }
+            for event in events
+        ],
     }
 
 
