@@ -25,8 +25,8 @@ powershell -ExecutionPolicy Bypass -File scripts/verify_delivery.ps1
 
 ```powershell
 python -m unittest discover -s tests -v
-pnpm --dir frontend install --frozen-lockfile
-pnpm --dir frontend run build
+npx --yes pnpm@11.19.0 --dir frontend install --frozen-lockfile
+npx --yes pnpm@11.19.0 --dir frontend run build
 ```
 
 任何一步失败都会返回非零退出码，不会把部分成功误报为完整通过。
@@ -44,8 +44,8 @@ python -m venv .verify-venv
 前端使用：
 
 ```powershell
-pnpm --dir frontend install --frozen-lockfile
-pnpm --dir frontend run build
+npx --yes pnpm@11.19.0 --dir frontend install --frozen-lockfile
+npx --yes pnpm@11.19.0 --dir frontend run build
 ```
 
 原始数据和模型按题目要求不进入 Git，因此“洁净机器复现”仍需要复现者先从题目来源下载 3 个原始文件，再运行 README 中的数据处理和训练命令。这是合规前置条件，不是仓库缺失。
@@ -55,7 +55,7 @@ pnpm --dir frontend run build
 - 原始数据审计和完整时间切分成功。
 - validation 与 final ItemCF 评估成功；最终耗时 148.9 秒。
 - 2026-09-04 在全新临时 Python venv 中从 `requirements.txt` 安装成功，11 项自动化测试全部通过。
-- `pnpm install --frozen-lockfile` 和 Vite 生产构建通过（1,817 个模块，产物约 226.12 kB JS、19.83 kB CSS）。
+- `npx --yes pnpm@11.19.0 install --frozen-lockfile` 和 Vite 生产构建通过（1,817 个模块，产物约 226.12 kB JS、19.83 kB CSS）。
 - 浏览器人工检查已覆盖桌面/移动布局、用户注册、Alice 信息流/反馈/个人页、管理员 Dashboard、用户调试、强推和内容上下线。
 
 运行时健康检查命令：

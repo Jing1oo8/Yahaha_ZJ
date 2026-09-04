@@ -26,11 +26,11 @@ try {
     if ($LASTEXITCODE -ne 0) { throw "Python tests failed with exit code $LASTEXITCODE" }
 
     Write-Host "[2/3] Verifying frontend dependencies from lockfile"
-    pnpm --dir frontend install --frozen-lockfile
+    npx --yes pnpm@11.19.0 --dir frontend install --frozen-lockfile
     if ($LASTEXITCODE -ne 0) { throw "Frontend dependency verification failed with exit code $LASTEXITCODE" }
 
     Write-Host "[3/3] Building the production frontend"
-    pnpm --dir frontend run build
+    npx --yes pnpm@11.19.0 --dir frontend run build
     if ($LASTEXITCODE -ne 0) { throw "Frontend build failed with exit code $LASTEXITCODE" }
 
     Write-Host "Delivery verification passed." -ForegroundColor Green

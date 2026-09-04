@@ -11,6 +11,11 @@ MicroLens 原始数据 -> 离线处理/训练 -> 推荐 API -> 用户行为
 
 项目采用 CPU ItemCF、FastAPI/SQLite 和 React/Vite，提供从离线训练到线上反馈与运营的完整本地运行链路。原始数据、数据库与模型产物不会提交到 Git；验证命令和运行记录见 [测试与验证](docs/VERIFICATION.md)。
 
+## 演示视频
+
+- [百度网盘：点击查看项目演示视频](https://pan.baidu.com/s/1xivshZSSfsSfeYV4Esy94A?pwd=qdg2)
+- 提取码：`qdg2`
+
 ## 目录结构
 
 ```text
@@ -28,8 +33,7 @@ models/        本地模型产物（Git 忽略）
 
 - Windows PowerShell（文档命令按 Windows 编写）
 - Python 3.12+
-- Node.js 20+
-- pnpm
+- Node.js 20+（包含 npm/npx）
 - 至少 2 GB 可用内存
 
 ## 1. 获取并放置数据
@@ -53,7 +57,7 @@ python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 python -m pip install --upgrade pip
 python -m pip install -r requirements.txt
-pnpm --dir frontend install --frozen-lockfile
+npx --yes pnpm@11.19.0 --dir frontend install --frozen-lockfile
 ```
 
 如 PowerShell 阻止激活脚本，也可以不激活，后续把 `python` 替换为 `.\.venv\Scripts\python.exe`。
@@ -99,7 +103,7 @@ python -m uvicorn backend.app.main:app --host 127.0.0.1 --port 8000
 终端 2（前端）：
 
 ```powershell
-pnpm --dir frontend run dev
+npx --yes pnpm@11.19.0 --dir frontend run dev
 ```
 
 - Demo：`http://127.0.0.1:5173/`
@@ -118,8 +122,8 @@ powershell -ExecutionPolicy Bypass -File scripts/verify_delivery.ps1
 
 ```powershell
 python -m unittest discover -s tests -v
-pnpm --dir frontend install --frozen-lockfile
-pnpm --dir frontend run build
+npx --yes pnpm@11.19.0 --dir frontend install --frozen-lockfile
+npx --yes pnpm@11.19.0 --dir frontend run build
 ```
 
 ## 演示顺序
