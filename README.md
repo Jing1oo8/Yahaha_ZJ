@@ -7,9 +7,9 @@ MicroLens 原始数据 -> 离线处理/训练 -> 推荐 API -> 用户行为
         -> Dashboard 指标 -> 内容运营 -> 推荐结果变化
 ```
 
-## 当前状态
+## 项目简介
 
-除 3–5 分钟演示视频外，必需的仓库交付物和本地可运行链路均已具备。项目采用 CPU ItemCF、FastAPI/SQLite 和 React/Vite；原始数据、数据库与模型产物不会提交到 Git。逐项状态见 [交付核对表](docs/DELIVERY_CHECKLIST.md)，验证命令和证据见 [测试与验证](docs/VERIFICATION.md)。
+项目采用 CPU ItemCF、FastAPI/SQLite 和 React/Vite，提供从离线训练到线上反馈与运营的完整本地运行链路。原始数据、数据库与模型产物不会提交到 Git；验证命令和运行记录见 [测试与验证](docs/VERIFICATION.md)。
 
 ## 目录结构
 
@@ -17,9 +17,9 @@ MicroLens 原始数据 -> 离线处理/训练 -> 推荐 API -> 用户行为
 backend/       FastAPI、SQLite、认证、推荐服务和运营接口
 frontend/      React 用户信息流、个人页、Dashboard 和内容运营界面
 pipeline/      数据审计、时间切分、训练、评估和模型导出
-scripts/       一键交付核验脚本
+scripts/       一键测试与构建脚本
 tests/         数据、模型和 API 自动化测试
-docs/          设计、数据、API、评估和交付文档
+docs/          设计、数据、API、评估和验证文档
 data/          本地原始/处理数据及 SQLite（Git 忽略）
 models/        本地模型产物（Git 忽略）
 ```
@@ -106,9 +106,9 @@ pnpm --dir frontend run dev
 - 后端健康检查：`http://127.0.0.1:8000/api/health`
 - OpenAPI：`http://127.0.0.1:8000/docs`
 
-前端通过 Vite 的 `/api` 代理访问后端，不需要额外配置跨域。若只能本地运行，以上地址、命令和测试账号共同构成完整的本地 Demo 交付方式。
+前端通过 Vite 的 `/api` 代理访问后端，不需要额外配置跨域。
 
-## 6. Smoke 与交付核验
+## 6. Smoke 与完整验证
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File scripts/verify_delivery.ps1
@@ -142,4 +142,3 @@ MicroLens-50K 原始文件没有视频或封面 URL 映射，因此界面使用�
 - [工程决策](docs/DECISIONS.md)
 - [完成度与 AI 协作](docs/COMPLETION.md)
 - [测试与验证](docs/VERIFICATION.md)
-- [交付核对表](docs/DELIVERY_CHECKLIST.md)

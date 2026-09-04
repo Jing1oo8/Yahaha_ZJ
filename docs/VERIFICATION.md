@@ -29,7 +29,7 @@ pnpm --dir frontend install --frozen-lockfile
 pnpm --dir frontend run build
 ```
 
-任何一步失败都会返回非零退出码，不会把部分成功误报为交付通过。
+任何一步失败都会返回非零退出码，不会把部分成功误报为完整通过。
 
 ## 洁净依赖环境复现方法
 
