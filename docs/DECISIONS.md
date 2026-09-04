@@ -1,41 +1,38 @@
-# Engineering Decisions
+# 工程决策
 
-## Initial stack
+## 技术栈
 
-- FastAPI and SQLAlchemy for a small, typed Python API.
-- SQLite for a zero-service local demo with real persistence and aggregation.
-- React and Vite for the user feed and administrator interface.
-- Pandas, NumPy and scikit-learn for a CPU-friendly offline pipeline.
-- Docker Compose plus native local commands for reproducibility.
+- FastAPI + SQLAlchemy：小型、类型明确的 Python API。
+- SQLite：零外部服务即可演示真实持久化和聚合。
+- React + Vite：用户信息流、Dashboard 和运营界面。
+- Python 标准库实现数据处理和 CPU ItemCF，减少安装和复现成本。
 
-## Delivery strategy
+当前交付采用原生启动命令。Docker Compose 是题目推荐项而非强制项；MVP 不依赖 Redis、消息队列或额外数据库，因此暂不为容器化引入无实际用途的服务。
 
-Build a real vertical slice before optional sophistication. The first slice must
-connect processed MicroLens data, a learned score, an authenticated feed,
-exposure/event persistence, dashboard aggregation and server-side operations.
+## 交付策略
 
-## Deferred until the required loop is stable
+先完成真实的纵向闭环，再增加可选复杂度。核心链路必须连接：处理后的 MicroLens 数据、可学习分数、登录后的信息流、曝光/行为持久化、Dashboard 聚合和服务端运营操作。
 
-- Redis caching and asynchronous training jobs
-- Image, video or multimodal embeddings
-- A complex two-stage neural architecture
-- Paid cloud infrastructure
+以下内容属于后续增强，不影响当前必需链路：
 
-These features are useful only after the scored acceptance path is reliable.
+- Redis 缓存和异步训练任务
+- 图像、视频或多模态 embedding
+- DSSM、DeepFM/MLP 等复杂两阶段架构
+- 付费云基础设施
 
-## Data split and leakage policy
+## 数据切分与泄漏规则
 
-- Split interactions by global event time into approximately 80% train, 10%
-  validation and 10% test partitions.
-- Keep identical millisecond timestamps in one partition so strict ordering
-  holds across train, validation and test.
-- Tune on train/validation only. Refit on train plus validation once before the
-  final test evaluation.
-- Evaluate collaborative models only on users and items known at fit time, and
-  report the excluded cold-start share as coverage.
-- Source likes/views have no observation timestamp. They may be used as clearly
-  labeled online popular/cold-start priors, but never in temporal offline model
-  comparison. Offline popularity baselines use fitting interactions only.
+- 按全局事件时间约 80%/10%/10% 切分训练、验证和测试集。
+- 相同毫秒的事件必须进入同一分区，保证严格时间顺序。
+- 仅用训练/验证集选择配置，最终固定配置后只做一次训练+验证重训和测试评估。
+- 协同模型只评估拟合时已知的用户与物品，排除的冷启动比例单独报告。
+- 原始 likes/views 没有观测时间，只能作为明确标注的线上热门/冷启动先验，不能进入时间切分的离线模型或 baseline。离线热门 baseline 只统计拟合窗口行为。
 
-The global cutoff models a real deployment time. It is deliberately stricter
-than a random split and exposes cold-start cases for online fallback handling.
+全局切点比随机切分更严格，更贴近真实上线时间，也会主动暴露需要 fallback 处理的冷启动问题。
+
+## 安全与可观测性
+
+- 会话、角色、曝光归属和内容上下线均由服务端校验。
+- 每次推荐保存 request、exposure 和 impression，行为通过 `request_id` 回连。
+- 模型以带版本号的 gzip JSON 发布；训练失败不会覆盖已发布模型。
+- 原始数据、数据库、模型和真实密钥均由 `.gitignore` 排除。

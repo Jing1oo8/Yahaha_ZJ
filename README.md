@@ -1,139 +1,145 @@
-# YAHAHA Recommendation System MVP
+# YAHAHA 推荐系统 MVP
 
-A two-day recommendation-system engineering exercise based on MicroLens-50K.
-
-The target is a reproducible end-to-end loop:
+这是一个基于 MicroLens-50K 的可复现推荐系统工程 MVP，完整链路为：
 
 ```text
-MicroLens data -> offline training -> recommendation API -> user events
-      -> observable metrics -> content operations -> updated feed
+MicroLens 原始数据 -> 离线处理/训练 -> 推荐 API -> 用户行为
+        -> Dashboard 指标 -> 内容运营 -> 推荐结果变化
 ```
 
-## Project status
+## 当前状态
 
-The CPU-only data, ItemCF, FastAPI/SQLite, React Feed, feedback, Dashboard and
-content-operations loop is runnable locally. Generated data, databases and model
-artifacts remain ignored by Git.
+除 3–5 分钟演示视频外，必需的仓库交付物和本地可运行链路均已具备。项目采用 CPU ItemCF、FastAPI/SQLite 和 React/Vite；原始数据、数据库与模型产物不会提交到 Git。逐项状态见 [交付核对表](docs/DELIVERY_CHECKLIST.md)，验证命令和证据见 [测试与验证](docs/VERIFICATION.md)。
 
-## Repository layout
+## 目录结构
 
 ```text
-backend/             FastAPI application, database, auth and online serving
-frontend/            React user feed, dashboard and content operations UI
-pipeline/            Data preparation, training, evaluation and model export
-tests/               Integration and end-to-end tests
-docs/                Design, API, evaluation and delivery documentation
-data/                 Local-only raw and processed data (ignored by Git)
-models/               Local-only model artifacts (ignored by Git)
+backend/       FastAPI、SQLite、认证、推荐服务和运营接口
+frontend/      React 用户信息流、个人页、Dashboard 和内容运营界面
+pipeline/      数据审计、时间切分、训练、评估和模型导出
+scripts/       一键交付核验脚本
+tests/         数据、模型和 API 自动化测试
+docs/          设计、数据、API、评估和交付文档
+data/          本地原始/处理数据及 SQLite（Git 忽略）
+models/        本地模型产物（Git 忽略）
 ```
 
-## Data policy
+## 环境要求
 
-MicroLens files and generated model artifacts must remain local. The repository
-contains scripts and documentation only; `.gitignore` excludes `data/raw/`,
-`data/processed/`, `data/artifacts/`, and `models/`.
+- Windows PowerShell（文档命令按 Windows 编写）
+- Python 3.12+
+- Node.js 20+
+- pnpm
+- 至少 2 GB 可用内存
 
-## Data audit and preparation
+## 1. 获取并放置数据
 
-Place the three official MicroLens-50K files under `data/raw/`, then run:
+数据集来源为 [MicroLens 官方仓库](https://github.com/westlake-repl/MicroLens)。下载 MicroLens-50K 后，将以下三个原始文件放入 `data/raw/`；不要把数据提交到仓库：
 
-```powershell
-python pipeline/inspect_raw.py --output data/artifacts/raw_audit.json
-python pipeline/prepare_data.py --output-dir data/processed
-python -m unittest discover -s tests -v
+```text
+data/raw/MicroLens-50k_pairs.csv
+data/raw/MicroLens-50k_titles.csv
+data/raw/MicroLens-50k_likes_and_views.txt
 ```
 
-The preparation command produces train/validation/test interactions, content
-metadata, fit-time user histories, and a manifest with hashes and summary
-statistics. It uses strict global time boundaries instead of randomly mixing
-future interactions into training. See `docs/DATA.md` for the schema, measured
-statistics, evaluation protocol and leakage rules.
+本项目记录了文件 SHA-256、字段和实测统计；下载后先按 [数据处理文档](docs/DATA.md) 核对版本。
 
-## Offline ItemCF training
+## 2. 安装依赖
 
-After data preparation, run validation and then the one-time final refit/test:
-
-```powershell
-python pipeline/train_itemcf.py --stage validation --report data/artifacts/validation_evaluation.json
-python pipeline/train_itemcf.py --stage final --report data/artifacts/final_evaluation.json
-```
-
-This CPU-only pipeline learns ItemCF similarities, compares them with fitting-
-window popularity and deterministic random baselines, and exports a gzip JSON
-artifact for online serving. The measured full final run took 148.9 seconds;
-allow at least 2 GB of free memory. See `docs/EVALUATION.md` for metric definitions,
-actual results and badcase analysis.
-
-## Local setup and startup
-
-Prerequisites: Python 3.12+, Node.js 20+, and pnpm. From the repository root:
+在仓库根目录执行：
 
 ```powershell
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
+python -m pip install --upgrade pip
 python -m pip install -r requirements.txt
-cd frontend
-pnpm install
-cd ..
+pnpm --dir frontend install --frozen-lockfile
 ```
 
-Place the three official MicroLens files in `data/raw/`, run the preparation and
-final training commands above, then initialize SQLite:
+如 PowerShell 阻止激活脚本，也可以不激活，后续把 `python` 替换为 `.\.venv\Scripts\python.exe`。
+
+## 3. 数据处理与离线训练
+
+```powershell
+python pipeline/inspect_raw.py --output data/artifacts/raw_audit.json
+python pipeline/prepare_data.py --output-dir data/processed
+python pipeline/train_itemcf.py --stage validation --report data/artifacts/validation_evaluation.json
+python pipeline/train_itemcf.py --stage final --report data/artifacts/final_evaluation.json
+```
+
+最终模型写入 `models/itemcf-0022f60b5e4b.json.gz`。完整 CPU 训练在开发机实测约 148.9 秒；算法、baseline、指标和 Badcase 见 [模型评估报告](docs/EVALUATION.md)。
+
+## 4. 初始化数据库
+
+默认值已经写在 `.env.example`，应用未额外加载 `.env` 文件时也会使用相同默认值。如需自定义，请在启动进程前设置对应环境变量。
 
 ```powershell
 python -m backend.app.seed
 ```
 
-Start the backend in terminal 1:
+该命令会导入内容和模型版本，并创建 3 个普通用户和 1 个管理员。
+
+| 角色 | 用户名 | 密码 | MicroLens 用户映射 |
+| --- | --- | --- | ---: |
+| 普通用户 | `alice` | `alice123` | 1 |
+| 普通用户 | `bob` | `bob12345` | 2 |
+| 普通用户 | `carol` | `carol123` | 3 |
+| 管理员 | `admin` | `admin123` | 无 |
+
+以上仅为本地演示账号，密码入库后保存为带随机盐的 PBKDF2 哈希。登录页也支持注册；新账号是与数据集身份隔离的冷启动普通用户。
+
+## 5. 启动本地 Demo
+
+终端 1（后端）：
 
 ```powershell
 python -m uvicorn backend.app.main:app --host 127.0.0.1 --port 8000
 ```
 
-Start the frontend in terminal 2:
+终端 2（前端）：
 
 ```powershell
-cd frontend
-pnpm run dev
+pnpm --dir frontend run dev
 ```
 
-Open `http://127.0.0.1:5173/`. OpenAPI documentation is at
-`http://127.0.0.1:8000/docs`. The frontend uses Vite's local `/api` proxy, so no
-cross-origin browser configuration is required.
+- Demo：`http://127.0.0.1:5173/`
+- 后端健康检查：`http://127.0.0.1:8000/api/health`
+- OpenAPI：`http://127.0.0.1:8000/docs`
 
-## Test accounts
+前端通过 Vite 的 `/api` 代理访问后端，不需要额外配置跨域。若只能本地运行，以上地址、命令和测试账号共同构成完整的本地 Demo 交付方式。
 
-| Role | Username | Password | MicroLens identity |
-| --- | --- | --- | ---: |
-| User | `alice` | `alice123` | 1 |
-| User | `bob` | `bob12345` | 2 |
-| User | `carol` | `carol123` | 3 |
-| Administrator | `admin` | `admin123` | none |
+## 6. Smoke 与交付核验
 
-These are local demonstration credentials, not production secrets. Passwords are
-stored as salted PBKDF2 hashes after seeding.
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/verify_delivery.ps1
+```
 
-## Verification
+脚本会检查原始数据、处理数据和模型是否存在，运行全部 Python 测试，并用锁文件安装前端依赖后执行生产构建。也可分别执行：
 
 ```powershell
 python -m unittest discover -s tests -v
-cd frontend
-pnpm run build
+pnpm --dir frontend install --frozen-lockfile
+pnpm --dir frontend run build
 ```
 
-The integration test proves two-user personalization, event idempotency, profile
-change, request/exposure linkage, admin authorization, server-side boost, offline
-filtering through both Feed and direct item API, and restore behavior.
+## 演示顺序
 
-## Demo path
+1. 展示数据来源目录、`split_manifest.json` 和训练/评估命令。
+2. 登录 Alice 和 Bob，对比不同个性化信息流。
+3. 注册新用户，展示冷启动 fallback。
+4. 播放、点赞、收藏或“不感兴趣”，展示个人画像和后续排序变化。
+5. 登录管理员，切换 Dashboard 时间范围、查看趋势、热门内容、请求链路并导出 CSV。
+6. 配置定向强推，再批量下线内容，验证目标信息流变化且下线内容无法通过直连接口获取。
 
-1. Run data preparation and show `split_manifest.json` summary.
-2. Run final ItemCF evaluation and show the baseline table in `docs/EVALUATION.md`.
-3. Log in as Alice and Bob and compare personalized Feed results.
-4. Like/not-interested content and open Profile and Dashboard to show real changes.
-5. In Dashboard, change the time range, inspect trends, Feed shares, popular
-   content and a request trace, then export the linked events as CSV.
-6. Log in as admin, boost an item, then offline it and verify it disappears.
+MicroLens-50K 原始文件没有视频或封面 URL 映射，因此界面使用明确标识的确定性演示缩略图；它不会把无关图片冒充原始封面。后端和前端已保留 `cover_url` 扩展位。
 
-Detailed contracts and tradeoffs are in `docs/API.md`, `docs/SYSTEM_DESIGN.md`,
-`docs/DATA.md`, `docs/EVALUATION.md`, and `docs/COMPLETION.md`.
+## 文档索引
+
+- [数据处理](docs/DATA.md)
+- [模型评估](docs/EVALUATION.md)
+- [数据库与 API](docs/API.md)
+- [系统设计](docs/SYSTEM_DESIGN.md)
+- [工程决策](docs/DECISIONS.md)
+- [完成度与 AI 协作](docs/COMPLETION.md)
+- [测试与验证](docs/VERIFICATION.md)
+- [交付核对表](docs/DELIVERY_CHECKLIST.md)

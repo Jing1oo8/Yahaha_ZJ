@@ -1,88 +1,68 @@
-# System Design
+# 系统设计
 
-## Architecture
+## 架构与离线到线上数据流
 
 ```text
-MicroLens raw files
+MicroLens 原始文件
         |
         v
-inspect_raw.py -> raw audit (hashes, quality, statistics)
+inspect_raw.py -> 原始数据审计（哈希、质量、统计）
         |
         v
-prepare_data.py -> temporal CSVs + item catalog + user histories + manifest
+prepare_data.py -> 时间切分 CSV + 物品目录 + 用户历史 + manifest
         |
         v
-train_itemcf.py -> validation/test reports + versioned ItemCF gzip artifact
+train_itemcf.py -> 验证/测试报告 + 带版本号的 ItemCF gzip 模型
         |
-        +------------------------+
-        v                        v
-FastAPI recommendation API <-> SQLite <-> Dashboard and Content Ops
-        ^                        |
-        |                        v
-React Feed <- request/exposure/event/profile feedback loop
+        +-----------------------------+
+        v                             v
+FastAPI 推荐 API <-------------> SQLite <-> Dashboard / 内容运营
+        ^                             |
+        |                             v
+React Feed <- request / exposure / event / profile 反馈闭环
 ```
 
-The model publish boundary is the versioned gzip artifact plus its model-version
-row. A failed training run writes a separate report/artifact and never overwrites
-the published version. Online service startup loads the configured `MODEL_PATH`;
-if unavailable, it reports `model_available=false` and can fall back to popular
-content instead of returning a hard-coded personalized list.
+模型发布边界由带版本号的 gzip 产物和 `model_versions` 记录共同组成。失败训练写独立报告/产物，不覆盖已发布版本。服务启动时读取 `MODEL_PATH`；模型不可用时健康接口返回 `model_available=false`，个性化 Feed 回退到热门内容，而不是固定推荐 JSON。
 
-## Recall, ranking, and mixing
+## 召回、排序与混排
 
-- Personalized: sum learned ItemCF neighbor similarities from offline history and
-  online likes/favorites; remove history, exposures, and not-interested items.
-- Popular: rank online content by source views then likes. These are explicitly
-  online catalog priors and were excluded from temporal offline evaluation.
-- Explore: rank unseen content by global exposure count, then a deterministic
-  user-item hash for stable diversity.
-- Fallback: personalized candidate shortages use fit-window interaction popularity.
-- Operator boost: active rules are inserted after algorithmic ranking but before
-  pagination. Rules can target user/feed and carry reason, priority, and time range.
-- Offline filter: applied before and after operations through server-owned item
-  state. Offline content cannot be fetched directly or returned by boosts.
+- Personalized：累加离线历史及线上点赞/收藏对应的 ItemCF 邻居分数；移除历史物品、近 24 小时曝光和“不感兴趣”物品。冷却期后旧曝光可重新进入。
+- Popular：按来源 views、likes 排序。它是线上目录先验，不参与时间切分离线评估。
+- Explore：优先全局曝光少的未看物品，再使用确定性 user-item 哈希提供稳定多样性。
+- Fallback：ItemCF 候选不足时用拟合窗口交互热门物品补齐。
+- 强推：有效规则在算法排序后、分页前插入，可配置用户/Feed、原因、优先级和时间范围。
+- 下线过滤：在运营逻辑前后都按服务端物品状态过滤；下线内容不能被强推或直连接口绕过。
 
-All feeds support cursor-style integer offsets, deduplication, seen filtering,
-and explicit empty/error/loading UI states. Each returned item retains source,
-score, model version, position, and request ID for diagnosis.
+所有 Feed 支持整数 offset 分页、去重、已看过滤，以及明确的空/错误/加载状态。每个返回物品保留来源、分数、模型版本、位置和 request ID。
 
-## Online feedback
+## 在线反馈与 Dashboard
 
-Feed requests synchronously persist request and exposure rows plus impressions.
-Click/like/favorite/not-interested calls must match an owned exposure and use a
-unique client event ID. Likes/favorites join the next ItemCF history immediately;
-not-interested items join the exclusion set. Offline retraining can later append
-validated events to a new training snapshot without mutating old evaluation data.
+Feed 请求同步持久化 recommendation_request、exposure 和 impression。click/like/favorite/not_interested 必须匹配本人曝光并携带唯一客户端 event ID。点赞和收藏立即加入下一次 ItemCF 历史，“不感兴趣”立即加入排除集合。后续离线训练可以把校验后的线上事件追加到新版本快照，而不修改历史评估数据。
 
-Dashboard queries accept one-hour, 24-hour, seven-day, 30-day, and all-time
-windows. The API aggregates active users, Feed shares, event metrics, popular
-content and hourly/daily trends from stored requests, exposures and events. A
-request trace reconnects the model version and Feed type to every exposure and
-behavior, while CSV export preserves the same identifiers for offline analysis.
+Dashboard 支持 1 小时、24 小时、7 天、30 天和全部时间范围，从真实 request、exposure、event 聚合活跃用户、Feed 占比、事件指标、热门内容和趋势。请求链路把模型版本和 Feed 类型回连到每次曝光/行为；CSV 导出保留同一组标识。管理员还能检查任意账号的离线历史、线上正负反馈、曝光数和下一页个性化候选。
 
-Duplicate events are ignored by unique event ID. Out-of-order events are safe
-because ranking uses event type and stored timestamp rather than arrival order.
-Events referencing absent metadata are rejected because exposure and item foreign
-keys must already exist.
+重复事件通过 event ID 幂等忽略。排序依据事件类型和存储时间，所以乱序到达不会破坏画像。不存在元数据或不属于当前用户曝光的事件会被拒绝。
 
-## Permissions and failure recovery
+## 权限边界
 
-- Session and role checks are server-side on every protected request.
-- A user can only submit events against their own exposures and profile endpoint.
-- Admin status changes and boosts are audited with actor, item, before/after state,
-  reason, and timestamp.
-- Offline wins over boost. Restore only returns content to normal candidate logic.
-- SQLite is sufficient for the local MVP. A production evolution would move to
-  PostgreSQL, cache model candidates in Redis, and process events asynchronously.
-- Generated data, databases, and models are ignored; raw files and secrets never
-  enter Git.
+- 每个受保护请求都在服务端检查会话和角色。
+- 公开注册只能创建普通冷启动账号，客户端不能指定角色或数据集身份。
+- 用户只能针对自己的曝光提交事件，也只能读取自己的个人页。
+- 管理员状态修改和强推记录 actor、物品、前后状态、原因及时间。
+- 下线优先于强推；恢复只让内容重新进入普通候选逻辑。
+- 原始文件、数据库、生成数据、模型和密钥均不进入 Git。
 
-## Known limits
+## 失败恢复与发布方式
 
-- ItemCF has weak relevance for one-interaction users and unseen items.
-- Integer-offset pagination can shift when operations change during a session; a
-  production stable cursor would encode candidate snapshot/version and last score.
-- Dashboard compares activity over time but does not yet compare two model
-  versions side by side.
-- Source statistics have unknown observation time and are never used in offline
-  temporal evaluation.
+- SQLite 足以支持本地 MVP；生产环境可迁移 PostgreSQL、Redis 候选缓存和异步事件处理。
+- 模型加载失败时保留健康状态和热门 fallback，不伪造个性化结果。
+- 运营操作有审计记录；restore 可恢复误下线内容。
+- 新模型以新文件和新版本记录发布，旧模型可作为回滚目标。
+
+## 已知限制
+
+- ItemCF 对单交互用户和未见物品较弱。
+- offset 分页在运营状态变化时可能漂移；生产应使用包含候选快照/版本和末尾分数的稳定 cursor。
+- Dashboard 有时间趋势，但暂不支持两个模型版本并排实验对比。
+- MicroLens-50K 没有视频或封面 URL 映射，当前使用明确标识的确定性演示缩略图。
+- 来源统计没有观测时间，绝不进入离线时间评估。

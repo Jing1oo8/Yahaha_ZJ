@@ -1,73 +1,48 @@
-# Completion and AI Collaboration
+# 完成度、风险与 AI 协作说明
 
-## Completed
+## 已完成
 
-- Audited three official MicroLens-50K files with hashes and quality statistics.
-- Reproducible global temporal train/validation/test processing with cold coverage.
-- CPU ItemCF with popularity/random baselines, three metrics, Badcase analysis,
-  deterministic version, gzip export and serving loader.
-- Four seeded accounts, PBKDF2 passwords, server sessions and role authorization.
-- Personalized, popular and explore Feed with pagination, source, score, model
-  version, request ID, deduplication, seen filtering and fallback.
-- Request, exposure, impression, click, like/favorite and not-interested storage;
-  idempotency and exposure ownership validation; immediate profile feedback.
-- Database-driven Dashboard with active users, time ranges, trends, Feed shares,
-  popular content, request traces and CSV export; content search, timed boost,
-  offline and restore; offline state is enforced by Feed, boost and direct APIs.
-- React UI, OpenAPI, system/data/evaluation documentation, integration tests and
-  verified production frontend build.
+- 审计 3 个 MicroLens-50K 原始文件，记录哈希、字段和质量统计。
+- 可复现的全局时间 train/validation/test 切分及冷启动覆盖率。
+- CPU ItemCF、Popularity/Random baseline、3 个排序指标、Badcase、确定性版本、gzip 导出和线上加载。
+- 3 个普通种子账号、1 个管理员、公开冷启动注册、PBKDF2 密码、服务端会话和角色权限。
+- Personalized/Popular/Explore Feed，以及分页、来源、分数、模型版本、request ID、去重、已看过滤和 fallback。
+- request、exposure、impression、click、like、favorite、not_interested 持久化；事件幂等、曝光归属校验和画像即时更新。
+- 真实数据库聚合 Dashboard：活跃用户、时间范围、趋势、Feed 占比、热门内容、请求链路、CSV 导出和管理员用户调试。
+- 内容搜索、强推/下线专属视图、优先级/有效期展示、批量强推/下线/恢复、定向规则，以及 Feed/强推/直连接口统一下线过滤。
+- React 界面、OpenAPI、中文数据/API/评估/系统设计文档、自动化测试、生产构建和交付核验脚本。
+- GitHub 仓库包含 5 次有意义提交，未提交数据集、模型大文件或真实密钥。
 
-## Not completed or intentionally deferred
+## 未完成或明确延期
 
-- Public cloud Demo URL and 3-5 minute video are not created in the repository.
-- Dashboard model-version comparison remains deferred; time-range charts,
-  request traces and CSV export are implemented.
-- DSSM plus DeepFM/MLP, negative sampling and multimodal features are bonus work;
-  the required learnable model is the explainable ItemCF baseline.
-- Docker Compose, Redis, asynchronous training, CI and structured latency metrics
-  are deferred until the local scored path is stable.
-- Placeholder covers are used; original videos are not loaded, as allowed.
+- 3–5 分钟演示视频：当前唯一尚未完成的必需提交项。
+- 公网 Demo：当前采用题目允许的完整本地启动方式；如提交平台硬性要求在线链接，仍需额外部署。
+- Docker Compose、Redis、异步训练、CI、结构化延迟指标属于工程增强，不是当前本地 MVP 的必需依赖。
+- DSSM、DeepFM/MLP、负采样和多模态特征属于加分项；当前必需的可学习模型是可解释 ItemCF。
+- 原始数据没有视频/封面 URL 映射，因此使用确定性演示缩略图，并保留真实 `cover_url` 扩展位。
 
-No required core endpoint uses fixed recommendation JSON or fixed Dashboard
-metrics. Seeded credentials and MicroLens user mapping are demonstration data;
-recommendations, requests, exposures, behavior, metrics and operations are real.
+必需接口不返回固定推荐 JSON，Dashboard 也不是固定数字。种子账号和 MicroLens 用户映射属于演示数据；推荐、请求、曝光、行为、指标和运营记录均由真实链路产生。
 
-## Largest current risk
+## 当前最大技术风险
 
-Strict global time splitting leaves only about 45% of validation/test events
-scoreable by collaborative filtering, and one-interaction users dominate sampled
-zero-hit cases. Online fallback exists, but relevance for cold users/items is the
-largest modeling risk. A title-based content recall source is the next highest
-value improvement.
+严格全局时间切分后，验证/测试事件只有约 45% 可由协同模型评估；抽样零命中用户多数只有一次历史交互。线上已有热门/探索 fallback，但冷用户和冷物品的相关性仍是最大模型风险。下一项最高价值改进是标题内容召回。
 
-## One-week iteration
+## 再给一周的迭代计划
 
-1. Add TF-IDF/title embedding recall and compare hybrid metrics by history length.
-2. Snapshot stable cursors and expose filter/reason traces per request.
-3. Add Dashboard time filters, trend charts, model comparison and CSV export.
-4. Append validated online events to a versioned training snapshot and schedule
-   asynchronous retraining with publish/rollback checks.
-5. Add Docker Compose, CI, structured logs, latency percentiles and failure alerts.
-6. Run usability testing, record the required demo video, and deploy a temporary
-   public Demo with restricted test credentials.
+1. 加入标题 TF-IDF/embedding 召回，按历史长度比较混合模型指标。
+2. 使用稳定 cursor 快照，并暴露过滤原因和候选贡献链路。
+3. 增加 Dashboard 模型版本对比和更细粒度候选解释。
+4. 将校验后的线上事件追加到版本化训练快照，加入异步重训、发布和回滚检查。
+5. 增加 Docker Compose、CI、结构化日志、延迟分位数和失败告警。
+6. 完成可用性测试、录制演示视频，按需要部署临时受限公网 Demo。
 
-## AI collaboration record
+## AI 协作记录
 
-OpenAI Codex was used for repository inspection, implementation, tests, browser
-verification and documentation. Key prompts from the candidate asked Codex to:
+使用 OpenAI Codex 完成仓库检查、初始实现、测试、浏览器验证和文档整理。关键 prompt 方向包括：
 
-- inherit `README.md`, `docs/DECISIONS.md` and the delivery checklist;
-- inspect MicroLens fields, rows, hashes, missing values and statistics;
-- design a leakage-safe temporal pipeline and explain it step by step;
-- follow the live Feishu assignment requirements while implementing and verifying.
+- 继承 `README.md`、`docs/DECISIONS.md` 和交付核对表中的既有约束；
+- 检查 MicroLens 字段、行数、哈希、缺失值和统计；
+- 设计无未来泄漏的时间切分流水线并逐步解释；
+- 对照题目交付要求实现、核验并如实区分已完成与待交付部分。
 
-AI contributed most initial code and documentation drafts. Human review decisions
-included retaining an explainable ItemCF MVP, enforcing a strict global cutoff,
-keeping raw data out of Git, and requiring live Feishu requirement verification.
-During review, the source likes/views policy was corrected: allowed as a labeled
-online popular prior, forbidden in temporal offline comparison. Tool failures were
-not treated as successful verification; full runs and browser checks were repeated.
-
-Verification performed: raw audit, full data processing, validation and final
-model evaluation, 9 Python tests, frontend production build, desktop/mobile visual
-inspection, real Alice login/feed/like/profile flow, and admin Dashboard inspection.
+AI 贡献了多数初始代码和文档草稿。人工 review 决策包括：保留可解释 ItemCF、使用严格全局切点、不提交原始数据、要求以真实运行而非工具成功提示作为验收依据。review 中还修正了来源 likes/views 的使用边界：允许作为明确标注的线上热门先验，禁止进入时间离线对比。

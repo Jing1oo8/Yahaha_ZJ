@@ -1,101 +1,68 @@
-# Offline Model Evaluation
+# 离线模型评估报告
 
-## Model and baselines
+## 模型与 baseline
 
-The required learnable baseline is ItemCF. It learns item-item similarity from
-fit-window user co-occurrence, discounts large user baskets with inverse user
-frequency, and cosine-normalizes by item frequency. For a user, neighbors of
-historical items are summed, seen items are removed, and fit-window popularity
-fills a short candidate list.
+必需的可学习 baseline 为 ItemCF。它从拟合窗口的用户-物品共现学习物品相似度，用逆用户频率降低长行为序列的影响，再按物品频率做余弦归一化。预测时累加用户历史物品的邻居分数、移除已看物品，并在候选不足时使用拟合窗口热门物品补齐。
 
-It is compared with fitting-window popularity and a seeded deterministic random
-sample of unseen items. Source likes/views are excluded from offline comparison
-because their observation times are unknown. They remain available as a clearly
-labeled online cold-start prior.
+对照组为拟合窗口热门排序和固定随机种子的未看物品抽样。来源 likes/views 因没有观测时间，不参与离线对比，只用于明确标注的线上冷启动先验。
 
-## Commands
+## 可复现命令
 
-First create processed data as described in `docs/DATA.md`. Then run validation:
+先按 [数据处理文档](DATA.md) 生成数据，再执行：
 
 ```powershell
-python pipeline/train_itemcf.py `
-  --stage validation `
-  --report data/artifacts/validation_evaluation.json
+python pipeline/train_itemcf.py --stage validation --report data/artifacts/validation_evaluation.json
+python pipeline/train_itemcf.py --stage final --report data/artifacts/final_evaluation.json
 ```
 
-After fixing the configuration from validation, run the final refit and test once:
+两个命令均只使用 CPU。开发机最终运行拟合 323,737 条交互，为 11,774 个用户评估 3 个推荐器，耗时 148.9 秒，建议至少保留 2 GB 可用内存。压缩模型约 8 MB。
 
-```powershell
-python pipeline/train_itemcf.py `
-  --stage final `
-  --report data/artifacts/final_evaluation.json
-```
+## 训练配置与评估协议
 
-Both commands are CPU-only. On the development machine, the final command fit
-323,737 interactions and evaluated three recommenders for 11,774 users in
-148.9 seconds. Allow at least 2 GB of free memory. The final compressed model is
-about 8 MB.
+- 配置：`neighbor_limit=100`、`K=20`、随机种子 `20260902`。
+- 验证：拟合 `train.csv`，评估 `validation_eval.csv`。
+- 最终：拟合 `train.csv + validation.csv`，评估 `test_eval.csv`。
+- 聚合单位：至少有一个可评估未来事件的用户，做 macro average。
+- 相关集合：该用户在评估窗内的全部可评估未来物品。
+- 所有推荐器均移除拟合历史中的已看物品。
+- Recall@20：召回的相关未来物品比例。
+- HitRate@20：至少命中一个相关物品的用户比例。
+- NDCG@20：越靠前的命中获得越高权重。
+- Catalog Coverage@20：所有用户推荐结果覆盖的唯一物品数 / 拟合目录物品数。
 
-## Evaluation protocol
+## 指标结果
 
-- Configuration: `neighbor_limit=100`, `K=20`, random seed `20260902`.
-- Validation fit: `train.csv`; evaluation: `validation_eval.csv`.
-- Final fit: `train.csv + validation.csv`; evaluation: `test_eval.csv`.
-- Unit: macro average over users with at least one scoreable future event.
-- Relevant set: all scoreable future items for that user in the evaluation window.
-- Seen items from the fit history are removed from every recommender.
-- Recall@20 measures the fraction of relevant future items retrieved.
-- HitRate@20 measures the fraction of users with at least one hit.
-- NDCG@20 rewards hits more when they appear near the top.
-- Catalog coverage is unique recommended items divided by fitting-catalog items.
+### 验证集
 
-## Results
-
-### Validation
-
-| Recommender | Recall@20 | HitRate@20 | NDCG@20 | Catalog coverage@20 |
+| 推荐器 | Recall@20 | HitRate@20 | NDCG@20 | Catalog Coverage@20 |
 | --- | ---: | ---: | ---: | ---: |
 | ItemCF | 0.051297 | 0.060626 | 0.021676 | 1.000000 |
 | Popularity | 0.004870 | 0.005626 | 0.001688 | 0.002543 |
 | Random | 0.000787 | 0.001176 | 0.000275 | 1.000000 |
 
-### Final test
+### 最终测试集
 
-| Recommender | Recall@20 | HitRate@20 | NDCG@20 | Catalog coverage@20 |
+| 推荐器 | Recall@20 | HitRate@20 | NDCG@20 | Catalog Coverage@20 |
 | --- | ---: | ---: | ---: | ---: |
 | ItemCF | 0.044269 | 0.053508 | 0.017938 | 1.000000 |
 | Popularity | 0.005016 | 0.006370 | 0.001384 | 0.002196 |
 | Random | 0.000719 | 0.001104 | 0.000299 | 1.000000 |
 
-The learned model beats both baselines on all three ranking metrics. The modest
-absolute values are credible for sparse implicit data, a strict global temporal
-cutoff, and only ID co-occurrence features. The validation-to-test drop indicates
-time drift; the test set was not reused for another tuning round.
+ItemCF 在三项排序指标上都明显优于两个 baseline。绝对值不高，符合稀疏隐式反馈、严格全局时间切点和仅使用 ID 共现特征的预期。验证到测试的下降说明存在时间漂移；测试集没有被用于第二轮调参。
 
-Catalog coverage for ItemCF and random reaches the fitting catalog across all
-users, while popularity concentrates on very few items. Coverage does not imply
-quality by itself: random has high coverage and very low relevance, so relevance
-and coverage must be read together.
+ItemCF 与随机推荐的目录覆盖率都很高，但覆盖率不等于质量：Random 覆盖高、相关性极低，所以必须和排序指标一起解读。
 
-## Badcase analysis
+## 误差与 Badcase 分析
 
-The sampled zero-hit ItemCF cases consistently have only one fit-history item.
-One interaction provides too little co-occurrence evidence, and future items may
-not be neighbors of that single item. This motivates the required online design:
+抽样的 ItemCF 零命中用户通常只有 1 个拟合历史物品。单次交互无法提供足够共现证据，未来物品也可能不是它的邻居。这直接对应线上设计：
 
-1. Fall back to popular and explore feeds for short-history and cold users.
-2. Add title/content recall later, especially for cold items.
-3. Update the online profile immediately after like/not-interested behavior.
-4. Preserve source and score fields so Dashboard can diagnose each recall path.
+1. 短历史和冷启动用户使用 popular/explore fallback。
+2. 后续加入标题 TF-IDF 或内容 embedding，尤其改善冷物品召回。
+3. 点赞/收藏立即加入线上正反馈，“不感兴趣”立即进入排除集合。
+4. 保留 `source`、`score`、模型版本和 `request_id`，便于定位召回来源。
 
-## Consumable artifact
+## 可消费模型产物
 
-The final version is `itemcf-0022f60b5e4b`, written to
-`models/itemcf-0022f60b5e4b.json.gz`. Its deterministic version derives from raw
-hashes, split boundaries, stage, algorithm, and neighbor configuration. The gzip
-JSON contains metadata, fit-only popular items, and top item neighbors. User
-histories are stored in `data/processed/user_history.jsonl`.
+最终版本为 `itemcf-0022f60b5e4b`，输出到 `models/itemcf-0022f60b5e4b.json.gz`。版本由原始哈希、切分边界、阶段、算法和邻居配置确定性生成。gzip JSON 包含元数据、拟合窗热门物品和 top 相似邻居；用户历史位于 `data/processed/user_history.jsonl`。
 
-`load_model_artifact()` validates and loads the same format intended for the
-online service. Generated artifacts remain ignored by Git and are rebuilt with
-the documented command.
+线上服务使用同一 `load_model_artifact()` 格式校验并加载。生成产物由 Git 忽略，可通过上述命令重建。
